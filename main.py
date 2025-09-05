@@ -2,7 +2,6 @@ from fastapi import FastAPI, Query
 from pydantic import BaseModel
 import os
 
-# --- LangChain & dependencies ---
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
@@ -12,53 +11,36 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.chat_models import init_chat_model
-import google.generativeai as genai
 
-# ----------------------
-# FastAPI app
-# ----------------------
-app = FastAPI(title="PESU RAG API")
 
-# ----------------------
-# Initialization (runs once at startup)
-# ----------------------
+app = FastAPI(title="askPESU API")
+
 @app.on_event("startup")
 def startup_event():
     global rag_chain
-
-    # ✅ Configure API keys
-    os.environ["GOOGLE_API_KEY"] = "AIzaSyDmAcinTsUXaah7faYxcuvyr5v7DZ0R_f4"
     qdrant_api_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.4qKZ78J7ggkiXVjq_mYsxb01SfuYM2iRJTkLWlbwHZw"
-    gemini_api_key = os.environ["GOOGLE_API_KEY"]
+    gemini_api_key = "AIzaSyDmAcinTsUXaah7faYxcuvyr5v7DZ0R_f4"
 
-    genai.configure(api_key=gemini_api_key)
-
-    # ✅ Qdrant client
     client = QdrantClient(
         url="https://637023ed-a0a7-45c9-b4a4-22fb60fc4ae7.europe-west3-0.gcp.cloud.qdrant.io",
         api_key=qdrant_api_key
     )
 
-    # ✅ Embeddings
     embeddings = HuggingFaceEmbeddings(model_name="Alibaba-NLP/gte-modernbert-base")
 
-    # ✅ Vector store
     vector_store = QdrantVectorStore(
        collection_name="reddit_vectors",
        embedding=embeddings,
        client=client
     )
 
-    # ✅ LLM
-    llm = init_chat_model("gemini-2.5-flash", model_provider="google_genai")
+    llm = init_chat_model("gemini-2.5-flash", model_provider="google_genai",google_api_key=gemini_api_key)
 
-    # ✅ Retriever
     retriever = MultiQueryRetriever.from_llm(
         retriever=vector_store.as_retriever(),
         llm=llm
     )
 
-    # ✅ Prompt
     prompt = ChatPromptTemplate.from_messages([
        ("system",
         "You are askPESU, developed by the PESU Dev team. "
@@ -83,7 +65,6 @@ Answer:""",
     def format_docs(docs):
         return "\n\n".join(doc.page_content for doc in docs)
 
-    # ✅ RAG chain
     rag_chain = (
         {"context": retriever | format_docs, "question": RunnablePassthrough()}
         | prompt
@@ -92,9 +73,6 @@ Answer:""",
     )
 
 
-# ----------------------
-# API Endpoint
-# ----------------------
 @app.get("/ask")
 def ask_pesu(query: str = Query(..., description="User question")):
     """Answer a question using PESU RAG pipeline."""
